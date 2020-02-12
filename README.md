@@ -5,6 +5,14 @@ wkhtmltopdf in a docker container as a web service.
 This image is based on the 
 [wkhtmltopdf container](https://registry.hub.docker.com/u/openlabs/docker-wkhtmltopdf/).
 
+This is also an extension to: [
+docker-wkhtmltopdf-aas](https://github.com/openlabs/docker-wkhtmltopdf-aas).
+
+This container allows you to pass header and footer contents as a string rather than an url/file through the JSON API.
+
+You can also upload images as a base64 encoded string
+
+
 ## Running the service
 
 Run the container with docker run and binding the ports to the host.
@@ -61,6 +69,14 @@ import requests
 url = 'http://<docker_host>:<port>/'
 data = {
     'contents': open('/file/to/convert.html').read().encode('base64'),
+    'header': open('/file/to/header.html').read().encode('base64'),
+    'footer': open('/file/to/footer.html').read().encode('base64'),
+    'images': [
+        {
+            'path': 'relative/path/to/image.jpg',
+            'contents': open('/image.jpg').read().encode('base64')
+        }
+    ]
 }
 headers = {
     'Content-Type': 'application/json',    # This is important
@@ -110,12 +126,16 @@ with open('/path/to/local/file.pdf', 'wb') as f:
 * Add `curl` example for JSON api
 * Explain more gunicorn options
 
+
 ## Bugs and questions
 
 The development of the container takes place on 
-[Github](https://github.com/openlabs/docker-wkhtmltopdf-aas). If you
+[Github](https://github.com/coxeh/docker-wkhtmltopdf-aas). If you
 have a question or a bug report to file, you can report as a github issue.
 
+### Unique Image Paths
+This could be achieved by inserting a base tag to each html document and updating the paths in the images to replicate
+the location with the base path.
 
 ## Authors and Contributors
 

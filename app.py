@@ -1,4 +1,4 @@
-#! /usr/bin/env python
+#! /usr/bin/env python3
 """
     WSGI APP to convert wkhtmltopdf As a webservice
 
@@ -7,6 +7,7 @@
 """
 import json
 import tempfile
+import os
 
 from werkzeug.wsgi import wrap_file
 from werkzeug.wrappers import Request, Response
@@ -24,44 +25,76 @@ def application(request):
     if request.method != 'POST':
         return
 
+    hasHeader = False
+    hasFooter = False
+    images = []
+
     request_is_json = request.content_type.endswith('json')
+    with tempfile.NamedTemporaryFile(suffix='.html') as footer_file:
+        with tempfile.NamedTemporaryFile(suffix='.html') as header_file:
+            with tempfile.NamedTemporaryFile(suffix='.html') as source_file:
 
-    with tempfile.NamedTemporaryFile(suffix='.html') as source_file:
+                if request_is_json:
+                    # If a JSON payload is there, all data is in the payload
+                    payload = json.loads(request.data)
+                    source_file.write(payload['contents'].decode('base64'))
+                    if payload.has_key('header'):
+                        header_file.write(payload['header'].decode('base64'))
+                        hasHeader = True
+                    if payload.has_key('footer'):
+                        footer_file.write(payload['footer'].decode('base64'))
+                        hasFooter = True
+                    if payload.has_key('images'):
+                         for image in payload['images']:
+                            if image.has_key('path') and image.has_key('contents'):
+                                path = "/tmp/" +image['path']
+                                if os.path.isdir(os.path.dirname(path))==False:
+                                    os.makedirs(os.path.dirname(path))
+                                f = open(path, "w")
+                                f.write(image['contents'].decode('base64'))
+                                f.close()
+                                images.append(path)
 
-        if request_is_json:
-            # If a JSON payload is there, all data is in the payload
-            payload = json.loads(request.data)
-            source_file.write(payload['contents'].decode('base64'))
-            options = payload.get('options', {})
-        elif request.files:
-            # First check if any files were uploaded
-            source_file.write(request.files['file'].read())
-            # Load any options that may have been provided in options
-            options = json.loads(request.form.get('options', '{}'))
+                    options = payload.get('options', {})
+                elif request.files:
+                    # First check if any files were uploaded
+                    source_file.write(request.files['file'].read())
+                    # Load any options that may have been provided in options
+                    options = json.loads(request.form.get('options', '{}'))
 
-        source_file.flush()
+                source_file.flush()
+                header_file.flush()
+                footer_file.flush()
 
-        # Evaluate argument to run with subprocess
-        args = ['wkhtmltopdf']
+                # Evaluate argument to run with subprocess
+                args = ['wkhtmltopdf']
 
-        # Add Global Options
-        if options:
-            for option, value in options.items():
-                args.append('--%s' % option)
-                if value:
-                    args.append('"%s"' % value)
+                if hasHeader:
+                    args.append('--header-html "file://%s"' % header_file.name)
+                if hasFooter:
+                    args.append('--footer-html "file://%s"' % footer_file.name)
 
-        # Add source file name and output file name
-        file_name = source_file.name
-        args += [file_name, file_name + ".pdf"]
+                # Add Global Options
+                if options:
+                    for option, value in options.items():
+                        args.append('--%s' % option)
+                        if value:
+                            args.append('"%s"' % value)
 
-        # Execute the command using executor
-        execute(' '.join(args))
+                # Add source file name and output file name
+                file_name = source_file.name
+                args += [file_name, file_name + ".pdf"]
 
-        return Response(
-            wrap_file(request.environ, open(file_name + '.pdf')),
-            mimetype='application/pdf',
-        )
+                # Execute the command using executor
+                execute(' '.join(args))
+
+                for image in images:
+                    os.remove(image)
+
+                return Response(
+                    wrap_file(request.environ, open(file_name + '.pdf')),
+                    mimetype='application/pdf',
+                )
 
 
 if __name__ == '__main__':
